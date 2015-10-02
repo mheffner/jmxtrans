@@ -246,7 +246,7 @@ public abstract class OpenTSDBGenericWriter extends BaseOutputWriter {
 	 *
 	 * @param result       - the result of the JMX query.
 	 * @param resultString - current form of the metric string.
-	 * @return String - the updated metric string with the necessary tag(s) added.
+	 *  - the updated metric string with the necessary tag(s) added.
 	 */
 	protected void addTypeNamesTags(StringBuilder resultString, Result result) {
 		if (mergeTypeNamesTags) {

@@ -15,10 +15,11 @@ import com.googlecode.jmxtrans.model.Result;
 import com.googlecode.jmxtrans.model.Server;
 import com.googlecode.jmxtrans.model.ValidationException;
 import com.googlecode.jmxtrans.model.naming.KeyUtils;
-import com.googlecode.jmxtrans.model.naming.StringUtils;
+//import com.googlecode.jmxtrans.model.naming.StringUtils;
 import com.googlecode.jmxtrans.util.NumberUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.NullOutputStream;
+import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
@@ -32,6 +33,7 @@ import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * This writer is a port of the LibratoWriter from the embedded-jmxtrans
@@ -55,6 +57,7 @@ import java.util.concurrent.TimeUnit;
  * @author <a href="mailto:cleclerc@cloudbees.com">Cyrille Le Clerc</a>
  */
 public class LibratoWriter extends BaseOutputWriter {
+	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	public final static String SETTING_URL = "url";
 	public final static String SETTING_USERNAME = "username";
@@ -63,6 +66,7 @@ public class LibratoWriter extends BaseOutputWriter {
 	public final static String SETTING_PROXY_PORT = "proxyPort";
 	public static final String DEFAULT_LIBRATO_API_URL = "https://metrics-api.librato.com/v1/metrics";
 	public static final String SETTING_LIBRATO_API_TIMEOUT_IN_MILLIS = "libratoApiTimeoutInMillis";
+	public static final Pattern NAME_PATTERN = Pattern.compile("[^-.:_\\w]");
 
 	private final org.slf4j.Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -138,7 +142,25 @@ public class LibratoWriter extends BaseOutputWriter {
 
 	public void internalWrite(Server server, Query query, ImmutableList<Result> results) throws Exception {
 		logger.debug("Export to '{}', proxy {} metrics {}", url, proxy, query);
-		writeToLibrato(server, query, results);
+
+		// XXX
+		boolean foundValid = false;
+		for (Result result : results) {
+			Map<String, Object> resultValues = result.getValues();
+			if (resultValues != null) {
+				for (Map.Entry<String, Object> values : resultValues.entrySet()) {
+					if (NumberUtils.isNumeric(values.getValue())) {
+						foundValid = true;
+						break;
+					}
+				}
+			}
+		}
+
+		// If we find at least one valid measure, then write
+		if (foundValid) {
+			writeToLibrato(server, query, results);
+		}
 	}
 
 	private void serialize(Server server, Query query, List<Result> results, OutputStream outputStream) throws IOException {
@@ -157,7 +179,7 @@ public class LibratoWriter extends BaseOutputWriter {
 				for (Map.Entry<String, Object> values : resultValues.entrySet()) {
 					if (NumberUtils.isNumeric(values.getValue())) {
 						g.writeStartObject();
-						g.writeStringField("name", KeyUtils.getKeyString(query, result, values, typeNames));
+						g.writeStringField("name", fixMetricName(KeyUtils.getKeyString(query, result, values, typeNames)));
 						if (source != null && !source.isEmpty()) {
 							g.writeStringField("source", source);
 						}
@@ -171,6 +193,8 @@ public class LibratoWriter extends BaseOutputWriter {
 							g.writeNumberField("value", (Float) value);
 						} else if (value instanceof Double) {
 							g.writeNumberField("value", (Double) value);
+						} else {
+							log.info("value of {} is a: {} ({})", fixMetricName(KeyUtils.getKeyString(query, result, values, typeNames)), value, value.getClass());
 						}
 						g.writeEndObject();
 					}
@@ -203,7 +227,8 @@ public class LibratoWriter extends BaseOutputWriter {
 			serialize(server, query, results, urlConnection.getOutputStream());
 			int responseCode = urlConnection.getResponseCode();
 			if (responseCode != 200) {
-				logger.warn("Failure {}:'{}' to send result to Librato server '{}' with proxy {}, username {}", responseCode, urlConnection.getResponseMessage(), url, proxy, username);
+				logger.warn("Failure {}:'{}' to send result to Librato server '{}' with proxy {}, username {}", responseCode,
+						urlConnection.getContent(), url, proxy, username);
 			}
 			if (logger.isTraceEnabled()) {
 				IOUtils.copy(urlConnection.getInputStream(), System.out);
@@ -233,8 +258,12 @@ public class LibratoWriter extends BaseOutputWriter {
 		if (server.getAlias() != null) {
 			return server.getAlias();
 		} else {
-			return StringUtils.cleanupStr(server.getHost());
+			return fixMetricName(server.getHost());
 		}
+	}
+
+	private String fixMetricName(String name) {
+		return NAME_PATTERN.matcher(name).replaceAll("_");
 	}
 
 	public URL getUrl() {

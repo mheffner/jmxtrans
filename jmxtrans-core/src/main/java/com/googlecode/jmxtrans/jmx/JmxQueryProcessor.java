@@ -18,9 +18,13 @@ import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.ReflectionException;
 import java.io.IOException;
+import java.util.List;
+//import java.util.Collections;
 import java.rmi.UnmarshalException;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Iterator;
+import java.util.Set;
+
 
 public class JmxQueryProcessor {
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -30,8 +34,37 @@ public class JmxQueryProcessor {
 	 */
 	public void processQuery(MBeanServerConnection mbeanServer, Server server, Query query) throws Exception {
 		ObjectName oName = new ObjectName(query.getObj());
-		
-		for (ObjectName queryName : mbeanServer.queryNames(oName, null)) {
+
+		Set<ObjectName> mbeans = mbeanServer.queryNames(oName, null);
+		log.info("got the following mbeans:");
+		//for (ObjectName o : mbeans) {
+		//	log.info("bean: {}", o);
+		//}
+
+		if (!query.getExcludeBeans().isEmpty()) {
+			List<String> excludeBeans = query.getExcludeBeans();
+			Iterator<ObjectName> it = mbeans.iterator();
+			while (it.hasNext()) {
+				ObjectName obj = it.next();
+
+				for (String s : excludeBeans) {
+					if (obj.getCanonicalName().contains(s)) {
+						log.info("removed the bean: {}", obj);
+						it.remove();
+						break;
+					}
+				}
+			}
+		}
+
+		log.info("left with the following means:");
+		for (ObjectName o : mbeans) {
+			log.info("bean: {}", o);
+		}
+
+		//mbeans = Collections.emptySet();
+
+		for (ObjectName queryName : mbeans) {
 			ImmutableList<Result> results = fetchResults(mbeanServer, query, queryName);
 			runOutputWritersForQuery(server, query, results);
 		}
@@ -47,8 +80,23 @@ public class JmxQueryProcessor {
 			for (MBeanAttributeInfo attrInfo : info.getAttributes()) {
 				attributes.add(attrInfo.getName());
 			}
+
 		} else {
 			attributes = query.getAttr();
+		}
+
+		// go through and remove excluded ones
+		if (!query.getExcludeAttrs().isEmpty()) {
+			Iterator<String> it = attributes.iterator();
+			while (it.hasNext()) {
+				String attr = it.next();
+				for (String exclude : query.getExcludeAttrs()) {
+					if (attr.contains(exclude)) {
+						it.remove();
+						break;
+					}
+				}
+			}
 		}
 
 		ImmutableList<Result> results = ImmutableList.of();

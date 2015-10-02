@@ -30,12 +30,14 @@ import static java.util.Arrays.asList;
  * @author jon
  */
 @JsonSerialize(include = NON_NULL)
-@JsonPropertyOrder(value = {"obj", "attr", "typeNames", "resultAlias", "keys", "allowDottedKeys", "outputWriters"})
+@JsonPropertyOrder(value = {"obj", "excludeBeans", "excludeAttrs", "attr", "typeNames", "resultAlias", "keys", "allowDottedKeys", "outputWriters"})
 @ThreadSafe
 @Immutable // Note that outputWriters is neither thread safe nor immutable (yet)
 public class Query {
 
 	private final String obj;
+	private final ImmutableList<String> excludeBeans;
+	private final ImmutableList<String> excludeAttrs;
 	private final ImmutableList<String> keys;
 	private final ImmutableList<String> attr;
 	private final ImmutableSet<String> typeNames;
@@ -47,6 +49,8 @@ public class Query {
 	@JsonCreator
 	public Query(
 			@JsonProperty("obj") String obj,
+			@JsonProperty("excludeBeans") List<String> excludeBeans,
+			@JsonProperty("excludeAttrs") List<String> excludeAttrs,
 			@JsonProperty("keys") List<String> keys,
 			@JsonProperty("attr") List<String> attr,
 			@JsonProperty("typeNames") Set<String> typeNames,
@@ -61,6 +65,8 @@ public class Query {
 		this.useObjDomainAsKey = firstNonNull(useObjDomainAsKey, false);
 		this.keys = resolveList(firstNonNull(keys, Collections.<String>emptyList()));
 		this.allowDottedKeys = allowDottedKeys;
+		this.excludeBeans = ImmutableList.copyOf(firstNonNull(excludeBeans, Collections.<String>emptyList()));
+		this.excludeAttrs = ImmutableList.copyOf(firstNonNull(excludeAttrs, Collections.<String>emptyList()));
 		this.outputWriters = ImmutableList.copyOf(firstNonNull(outputWriters, Collections.<OutputWriter>emptyList()));
 		this.typeNames = ImmutableSet.copyOf(firstNonNull(typeNames, Collections.<String>emptySet()));
 	}
@@ -70,6 +76,14 @@ public class Query {
 	 */
 	public String getObj() {
 		return obj;
+	}
+
+	public List<String> getExcludeBeans() {
+		return excludeBeans;
+	}
+
+	public List<String> getExcludeAttrs() {
+		return excludeAttrs;
 	}
 
 	/**
@@ -180,6 +194,8 @@ public class Query {
 	public static final class Builder {
 
 		private String obj;
+		private final List<String> excludeBeans = newArrayList();
+		private final List<String> excludeAttrs = newArrayList();
 		private final List<String> attr = newArrayList();
 		private String resultAlias;
 		private final List<String> keys = newArrayList();
@@ -197,6 +213,16 @@ public class Query {
 
 		public Builder addAttr(String... attr) {
 			this.attr.addAll(asList(attr));
+			return this;
+		}
+
+		public Builder setExcludeBeans(List<String> excludeBeans) {
+			this.excludeBeans.addAll(excludeBeans);
+			return this;
+		}
+
+		public Builder setexcludeAttrs(List<String> excludeAttrs) {
+			this.excludeAttrs.addAll(excludeAttrs);
 			return this;
 		}
 
@@ -241,6 +267,8 @@ public class Query {
 		public Query build() {
 			return new Query(
 					this.obj,
+					this.excludeBeans,
+					this.excludeAttrs,
 					this.keys,
 					this.attr,
 					this.typeNames,
